@@ -13,8 +13,6 @@ import { User, ServiceOrder } from '../../types';
 import { Button, Badge } from '../common/UI';
 import { mapUrlForRoute } from '../../utils/maps';
 import { apiUrl } from '../../lib/api';
-
-// --- Offline Sync Service ---
 export const syncQueue = {
   get: () => JSON.parse(localStorage.getItem('logitrack_sync_queue') || '[]'),
   add: (item: any) => {
@@ -88,52 +86,36 @@ export const DriverHome = ({ user, onSelectOS, onCreateOS, onLogout, onUpdateUse
     return () => clearInterval(interval);
   }, [user.id, user.shift_status]);
 
-  const handleStartRoute = () => {
+  const handleStartRoute = async () => {
     setAssigning(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const res = await fetch(apiUrl('/api/routes/assign-nearest'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              driver_id: user.id,
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude
-            })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            const updatedUser = { ...user, shift_status: 'ON_SHIFT' as const, assignedRoute: data.route };
-            onUpdateUser(updatedUser);
-            fetchOrders();
-            onShowChecklist();
-          } else {
-            alert(data.error || 'Erro ao iniciar rota');
-          }
-        } catch (err) {
-          alert('Erro de conexão ao iniciar rota');
-        } finally {
-          setAssigning(false);
-        }
-      },
-      (err) => {
-        alert('GPS necessário para iniciar rota');
-        setAssigning(false);
-      },
-      { enableHighAccuracy: true }
-    );
+    try {
+      const res = await fetch(apiUrl('/api/routes/assign-nearest'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driver_id: user.id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const updatedUser = { ...user, shift_status: 'ON_SHIFT' as const, assignedRoute: data.route };
+        onUpdateUser(updatedUser);
+        fetchOrders();
+        onShowChecklist();
+      } else {
+        alert(data.error || 'Erro ao iniciar rota');
+      }
+    } catch (err) {
+      alert('Erro de conexão ao iniciar rota');
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleOptimizeRoute = () => {
     if (orders.length === 0) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      const { latitude, longitude } = pos.coords;
-      const waypoints = orders
-        .filter(os => os.status !== 'FECHADA' && os.status !== 'CANCELADA')
-        .map(os => os.origin);
-      window.open(mapUrlForRoute(latitude, longitude, waypoints), '_blank');
-    });
+    const waypoints = orders
+      .filter(os => os.status !== 'FECHADA' && os.status !== 'CANCELADA')
+      .map(os => os.origin);
+    window.open(mapUrlForRoute(null, null, waypoints), '_blank');
   };
 
   const handleFinishRoute = async () => {

@@ -32,6 +32,11 @@ export interface ServiceOrder {
   status: 'ABERTA' | 'EM_COLETA' | 'EM_ROTA' | 'FECHADA' | 'CANCELADA';
   admin_note?: string;
   created_at: string;
+  scheduled_date?: string;
+  os_start_time?: string;
+  os_end_time?: string;
+  route_start_time?: string;
+  route_end_time?: string;
   last_reassigned_at?: string;
   reassignment_count: number;
   has_pickup: boolean;

@@ -7,29 +7,7 @@ import { ChecklistForm } from './ChecklistForm';
 import { mapUrlForCoordinates, mapUrlForDestination } from '../../utils/maps';
 import { apiUrl } from '../../lib/api';
 
-// Helper to reliably get coordinate telemetry with a safe default fallback
-const getTelemetryCoordinates = (): Promise<{ lat: number; lng: number; accuracy: number }> => {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ lat: -23.55052, lng: -46.6333, accuracy: 10 });
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        });
-      },
-      (err) => {
-        console.warn('Geolocation failed, using default: ', err);
-        resolve({ lat: -23.55052, lng: -46.6333, accuracy: 100 });
-      },
-      { timeout: 5000, enableHighAccuracy: true }
-    );
-  });
-};
+import { getDefaultCoordinates } from '../../utils/coords';
 
 export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { osId: number, user: User, onBack: () => void, onRegisterEvent: (type: 'COLETA' | 'ENTREGA', eventData?: any) => void, onLogout: () => void }) => {
   const [os, setOs] = useState<ServiceOrder | null>(null);
@@ -67,7 +45,7 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
     setSubmitting(true);
     
     // Get Telemetry (location)
-    const gps = await getTelemetryCoordinates();
+    const gps = getDefaultCoordinates();
     
     // Save checklist
     try {
@@ -128,7 +106,7 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
     setSubmitting(true);
     
     // Get Telemetry (location)
-    const gps = await getTelemetryCoordinates();
+    const gps = getDefaultCoordinates();
     
     try {
       const eventPayload = {

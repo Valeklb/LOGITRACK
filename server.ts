@@ -129,6 +129,11 @@ try { db.prepare("ALTER TABLE audit_log ADD COLUMN actor_role TEXT").run(); } ca
 try { db.prepare("ALTER TABLE users ADD COLUMN cpf TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN shift_status TEXT DEFAULT 'OFF_SHIFT'").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE service_orders ADD COLUMN scheduled_date TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE service_orders ADD COLUMN os_start_time TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE service_orders ADD COLUMN os_end_time TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE service_orders ADD COLUMN route_start_time TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE service_orders ADD COLUMN route_end_time TEXT").run(); } catch(e) {}
 
 // Checklists table migration (if not created by initial script)
 db.exec(`
@@ -165,7 +170,7 @@ async function startServer() {
     const origin = req.headers.origin;
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     }
     if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -259,28 +264,37 @@ async function startServer() {
   });
 
   app.post("/api/os", (req, res) => {
-    const { os_number, driver_id, plate, origin, destination, actor_id } = req.body;
+    const {
+      os_number, driver_id, plate, origin, destination, actor_id,
+      scheduled_date, os_start_time, os_end_time, route_start_time, route_end_time,
+    } = req.body;
     const actor = db.prepare("SELECT role FROM users WHERE id = ?").get(actor_id) as any;
     
     if (!actor) {
       return res.status(403).json({ error: "Usuário não encontrado" });
     }
 
-    // Allow drivers to create their own OS, or admin/gestor to create any
     if (actor.role === 'driver' && actor.id !== parseInt(driver_id)) {
       return res.status(403).json({ error: "Motoristas só podem criar suas próprias OS" });
     }
 
+    const date = scheduled_date || new Date().toISOString().split('T')[0];
+
     try {
       db.transaction(() => {
-        const result = db.prepare("INSERT INTO service_orders (os_number, driver_id, motorista_original_id, plate, origin, destination) VALUES (?, ?, ?, ?, ?, ?)").run(
-          os_number, driver_id, driver_id, plate, origin, destination
+        const result = db.prepare(`
+          INSERT INTO service_orders (
+            os_number, driver_id, motorista_original_id, plate, origin, destination,
+            scheduled_date, os_start_time, os_end_time, route_start_time, route_end_time
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          os_number, driver_id, driver_id, plate, origin, destination,
+          date, os_start_time || null, os_end_time || null, route_start_time || null, route_end_time || null
         );
         db.prepare("INSERT INTO audit_log (os_id, actor_id, actor_role, action, details) VALUES (?, ?, ?, ?, ?)").run(
           result.lastInsertRowid, actor_id, actor.role, "OS_CREATED", JSON.stringify({ os_number, driver_id, plate })
         );
 
-        // Notify driver
         notifyDriver(parseInt(driver_id), {
           type: "NEW_OS",
           title: "Nova OS Atribuída",
@@ -295,7 +309,10 @@ async function startServer() {
   });
 
   app.patch("/api/os/:id", (req, res) => {
-    const { status, admin_note, actor_id } = req.body;
+    const {
+      status, admin_note, actor_id, os_number, driver_id, plate, origin, destination,
+      scheduled_date, os_start_time, os_end_time, route_start_time, route_end_time,
+    } = req.body;
     const osId = req.params.id;
     const actor = db.prepare("SELECT role FROM users WHERE id = ?").get(actor_id) as any;
 
@@ -306,15 +323,67 @@ async function startServer() {
     if (status === 'CANCELADA' && actor.role !== 'gestor') {
       return res.status(403).json({ error: "Apenas Gestores podem cancelar OS" });
     }
-    
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    const setField = (column: string, value: unknown) => {
+      if (value !== undefined) {
+        updates.push(`${column} = ?`);
+        params.push(value === '' ? null : value);
+      }
+    };
+
+    setField('status', status);
+    setField('admin_note', admin_note);
+    setField('os_number', os_number);
+    setField('driver_id', driver_id);
+    setField('plate', plate);
+    setField('origin', origin);
+    setField('destination', destination);
+    setField('scheduled_date', scheduled_date);
+    setField('os_start_time', os_start_time);
+    setField('os_end_time', os_end_time);
+    setField('route_start_time', route_start_time);
+    setField('route_end_time', route_end_time);
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "Nenhum campo para atualizar" });
+    }
+
+    try {
+      db.transaction(() => {
+        db.prepare(`UPDATE service_orders SET ${updates.join(', ')} WHERE id = ?`).run(...params, osId);
+        db.prepare("INSERT INTO audit_log (os_id, actor_id, actor_role, action, details) VALUES (?, ?, ?, ?, ?)").run(
+          osId, actor_id, actor.role, "UPDATE_OS", JSON.stringify(req.body)
+        );
+      })();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: "Não foi possível atualizar a OS. Verifique se o número já existe." });
+    }
+  });
+
+  app.delete("/api/os/:id", (req, res) => {
+    const { actor_id } = req.body;
+    const osId = req.params.id;
+    const actor = db.prepare("SELECT role FROM users WHERE id = ?").get(actor_id) as any;
+
+    if (!actor || (actor.role !== 'admin' && actor.role !== 'gestor')) {
+      return res.status(403).json({ error: "Sem permissão para excluir OS" });
+    }
+
+    const os = db.prepare("SELECT id FROM service_orders WHERE id = ?").get(osId);
+    if (!os) return res.status(404).json({ error: "OS não encontrada" });
+
     db.transaction(() => {
-      if (status) db.prepare("UPDATE service_orders SET status = ? WHERE id = ?").run(status, osId);
-      if (admin_note) db.prepare("UPDATE service_orders SET admin_note = ? WHERE id = ?").run(admin_note, osId);
-      
-      db.prepare("INSERT INTO audit_log (os_id, actor_id, actor_role, action, details) VALUES (?, ?, ?, ?, ?)").run(
-        osId, actor_id, actor.role, "UPDATE_OS", JSON.stringify({ status, admin_note })
-      );
+      db.prepare("DELETE FROM os_events WHERE os_id = ?").run(osId);
+      db.prepare("DELETE FROM reassignment_requests WHERE os_id = ?").run(osId);
+      db.prepare("DELETE FROM checklists WHERE os_id = ?").run(osId);
+      db.prepare("DELETE FROM audit_log WHERE os_id = ?").run(osId);
+      db.prepare("DELETE FROM service_orders WHERE id = ?").run(osId);
     })();
+
     res.json({ success: true });
   });
 
@@ -423,12 +492,24 @@ async function startServer() {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(osId, type, photo_data, lat, lng, accuracy, battery_level, network_type, device_id, local_time, observation);
 
+      const eventTime = local_time?.includes('T') ? local_time.split('T')[1]?.substring(0, 5) : local_time?.substring(0, 5);
+
       const newStatus = type === 'COLETA' ? 'EM_ROTA' : 'FECHADA';
-      const updateQuery = type === 'COLETA' 
-        ? "UPDATE service_orders SET status = ?, has_pickup = 1 WHERE id = ?" 
-        : "UPDATE service_orders SET status = ?, has_delivery = 1 WHERE id = ?";
-      
-      db.prepare(updateQuery).run(newStatus, osId);
+      if (type === 'COLETA') {
+        db.prepare(`
+          UPDATE service_orders
+          SET status = ?, has_pickup = 1,
+              route_start_time = COALESCE(route_start_time, ?),
+              os_start_time = COALESCE(os_start_time, ?)
+          WHERE id = ?
+        `).run(newStatus, eventTime, eventTime, osId);
+      } else {
+        db.prepare(`
+          UPDATE service_orders
+          SET status = ?, has_delivery = 1, route_end_time = ?, os_end_time = ?
+          WHERE id = ?
+        `).run(newStatus, eventTime, eventTime, osId);
+      }
 
       // If driver is presenting a new trailer plate during COLETA, update the OS plate
       if (type === 'COLETA' && plate) {
@@ -516,29 +597,27 @@ async function startServer() {
   app.post("/api/routes/assign-nearest", (req, res) => {
     const { driver_id, lat, lng } = req.body;
     
-    // Check if driver already has a route
     const existing = db.prepare("SELECT id FROM routes WHERE assigned_driver_id = ? AND status = 'ASSIGNED'").get(driver_id);
     if (existing) {
       return res.status(400).json({ error: "Você já possui uma rota atribuída" });
     }
 
-    // Find all available routes
     const availableRoutes = db.prepare("SELECT * FROM routes WHERE status = 'AVAILABLE'").all() as any[];
     
     if (availableRoutes.length === 0) {
       return res.status(404).json({ error: "Nenhuma rota disponível no momento" });
     }
 
-    // Calculate nearest route using Haversine or simple Euclidean for small distances
-    // For simplicity, we'll use Euclidean distance squared here
     let nearestRoute = availableRoutes[0];
-    let minDistance = Math.pow(nearestRoute.start_lat - lat, 2) + Math.pow(nearestRoute.start_lng - lng, 2);
 
-    for (let i = 1; i < availableRoutes.length; i++) {
-      const dist = Math.pow(availableRoutes[i].start_lat - lat, 2) + Math.pow(availableRoutes[i].start_lng - lng, 2);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearestRoute = availableRoutes[i];
+    if (lat != null && lng != null) {
+      let minDistance = Math.pow(nearestRoute.start_lat - lat, 2) + Math.pow(nearestRoute.start_lng - lng, 2);
+      for (let i = 1; i < availableRoutes.length; i++) {
+        const dist = Math.pow(availableRoutes[i].start_lat - lat, 2) + Math.pow(availableRoutes[i].start_lng - lng, 2);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestRoute = availableRoutes[i];
+        }
       }
     }
 

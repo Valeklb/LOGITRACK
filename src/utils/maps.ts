@@ -17,12 +17,16 @@ export function mapUrlForDirections(
 }
 
 export function mapUrlForRoute(
-  fromLat: number,
-  fromLng: number,
+  fromLat: number | null,
+  fromLng: number | null,
   waypoints: string[]
 ): string {
   if (waypoints.length === 0) {
-    return mapUrlForCoordinates(fromLat, fromLng);
+    if (fromLat != null && fromLng != null) return mapUrlForCoordinates(fromLat, fromLng);
+    return 'https://www.openstreetmap.org';
   }
-  return mapUrlForDirections(fromLat, fromLng, waypoints[0]);
+  if (fromLat != null && fromLng != null) {
+    return mapUrlForDirections(fromLat, fromLng, waypoints[0]);
+  }
+  return mapUrlForDestination(waypoints[0]);
 }

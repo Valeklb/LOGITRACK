@@ -17,7 +17,9 @@ import {
   DollarSign,
   Activity,
   BarChart3,
-  Truck
+  Truck,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,6 +40,64 @@ import {
 import { User, ServiceOrder, DashboardStats } from '../../types';
 import { Button, Input, Badge, Logo } from '../common/UI';
 import { apiUrl } from '../../lib/api';
+import { formatDateBR, formatTime } from '../../utils/coords';
+
+const emptyOSForm = () => ({
+  os_number: '',
+  plate: '',
+  origin: '',
+  destination: '',
+  driver_id: '',
+  scheduled_date: new Date().toISOString().split('T')[0],
+  os_start_time: '',
+  os_end_time: '',
+  route_start_time: '',
+  route_end_time: '',
+});
+
+const OSFormFields = ({ form, setForm, drivers }: { form: ReturnType<typeof emptyOSForm>, setForm: (f: ReturnType<typeof emptyOSForm>) => void, drivers: User[] }) => (
+  <>
+    <div className="grid grid-cols-2 gap-6">
+      <Input label="Número da OS" value={form.os_number} onChange={(v: string) => setForm({ ...form, os_number: v })} placeholder="Ex: 12345" />
+      <Input label="Placa" value={form.plate} onChange={(v: string) => setForm({ ...form, plate: v })} placeholder="ABC-1234" />
+    </div>
+    <div className="space-y-1.5">
+      <label className="text-sm font-bold text-zinc-700">Motorista Responsável</label>
+      <select value={form.driver_id} onChange={(e) => setForm({ ...form, driver_id: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none">
+        <option value="">Selecione um motorista</option>
+        {drivers.filter(d => d.role === 'driver').map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>
+    </div>
+    <div className="grid grid-cols-2 gap-6">
+      <Input label="Origem" value={form.origin} onChange={(v: string) => setForm({ ...form, origin: v })} />
+      <Input label="Destino" value={form.destination} onChange={(v: string) => setForm({ ...form, destination: v })} />
+    </div>
+    <div className="space-y-1.5">
+      <label className="text-sm font-bold text-zinc-700">Data da OS</label>
+      <input type="date" value={form.scheduled_date} onChange={(e) => setForm({ ...form, scheduled_date: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none" />
+    </div>
+    <div className="grid grid-cols-2 gap-6">
+      <div className="space-y-1.5">
+        <label className="text-sm font-bold text-zinc-700">Início da OS</label>
+        <input type="time" value={form.os_start_time} onChange={(e) => setForm({ ...form, os_start_time: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-bold text-zinc-700">Fim da OS</label>
+        <input type="time" value={form.os_end_time} onChange={(e) => setForm({ ...form, os_end_time: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none" />
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-6">
+      <div className="space-y-1.5">
+        <label className="text-sm font-bold text-zinc-700">Início da Rota</label>
+        <input type="time" value={form.route_start_time} onChange={(e) => setForm({ ...form, route_start_time: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none" />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-bold text-zinc-700">Fim da Rota</label>
+        <input type="time" value={form.route_end_time} onChange={(e) => setForm({ ...form, route_end_time: e.target.value })} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none" />
+      </div>
+    </div>
+  </>
+);
 
 export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () => void }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -47,7 +107,8 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
   const [checklists, setChecklists] = useState<any[]>([]);
   const [view, setView] = useState<'dashboard' | 'orders' | 'drivers' | 'approvals' | 'routes' | 'checklists' | 'history'>('dashboard');
   const [showCreateOS, setShowCreateOS] = useState(false);
-  const [newOS, setNewOS] = useState({ os_number: '', plate: '', origin: '', destination: '', driver_id: '' });
+  const [editingOSId, setEditingOSId] = useState<number | null>(null);
+  const [osForm, setOsForm] = useState(emptyOSForm());
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateDriver, setShowCreateDriver] = useState(false);
@@ -102,16 +163,74 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
   };
 
   const handleCreateOS = async () => {
-    if (!newOS.os_number || !newOS.driver_id) return alert('Preencha os campos obrigatórios');
+    if (!osForm.os_number || !osForm.driver_id) return alert('Preencha os campos obrigatórios');
     const res = await fetch(apiUrl('/api/os'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newOS, actor_id: user.id })
+      body: JSON.stringify({ ...osForm, actor_id: user.id })
     });
     if (res.ok) {
       setShowCreateOS(false);
+      setOsForm(emptyOSForm());
       fetchData();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Erro ao criar OS');
     }
+  };
+
+  const openEditOS = (os: ServiceOrder) => {
+    setOsForm({
+      os_number: os.os_number,
+      plate: os.plate,
+      origin: os.origin,
+      destination: os.destination,
+      driver_id: String(os.driver_id),
+      scheduled_date: os.scheduled_date || os.created_at.split('T')[0],
+      os_start_time: os.os_start_time || '',
+      os_end_time: os.os_end_time || '',
+      route_start_time: os.route_start_time || '',
+      route_end_time: os.route_end_time || '',
+    });
+    setEditingOSId(os.id);
+  };
+
+  const handleUpdateOS = async () => {
+    if (!editingOSId || !osForm.os_number || !osForm.driver_id) return alert('Preencha os campos obrigatórios');
+    const res = await fetch(apiUrl(`/api/os/${editingOSId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...osForm, actor_id: user.id })
+    });
+    if (res.ok) {
+      setEditingOSId(null);
+      setOsForm(emptyOSForm());
+      fetchData();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Erro ao atualizar OS');
+    }
+  };
+
+  const handleDeleteOS = async (os: ServiceOrder) => {
+    if (!confirm(`Excluir a OS #${os.os_number}? Esta ação não pode ser desfeita.`)) return;
+    const res = await fetch(apiUrl(`/api/os/${os.id}`), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor_id: user.id })
+    });
+    if (res.ok) {
+      fetchData();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Erro ao excluir OS');
+    }
+  };
+
+  const closeOSModal = () => {
+    setShowCreateOS(false);
+    setEditingOSId(null);
+    setOsForm(emptyOSForm());
   };
 
   const handleCreateDriver = async () => {
@@ -237,7 +356,7 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                 </div>
                 <div className="flex gap-3">
                   <Button variant="outline" icon={Activity} onClick={fetchData}>Atualizar Dados</Button>
-                  <Button icon={Plus} onClick={() => setShowCreateOS(true)}>Nova OS</Button>
+                  <Button icon={Plus} onClick={() => { setOsForm(emptyOSForm()); setShowCreateOS(true); }}>Nova OS</Button>
                 </div>
               </div>
 
@@ -384,7 +503,7 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                       className="pl-11 pr-6 py-2.5 bg-white border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm w-72" 
                     />
                   </div>
-                  <Button icon={Plus} onClick={() => setShowCreateOS(true)}>Nova OS</Button>
+                  <Button icon={Plus} onClick={() => { setOsForm(emptyOSForm()); setShowCreateOS(true); }}>Nova OS</Button>
                 </div>
               </div>
 
@@ -396,10 +515,10 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                         <th className="p-6">Número</th>
                         <th className="p-6">Motorista</th>
                         <th className="p-6">Rota</th>
-                        <th className="p-6">Distância</th>
-                        <th className="p-6">Custo</th>
-                        <th className="p-6">Status</th>
                         <th className="p-6">Data</th>
+                        <th className="p-6">OS (Início → Fim)</th>
+                        <th className="p-6">Rota (Início → Fim)</th>
+                        <th className="p-6">Status</th>
                         <th className="p-6 text-right">Ações</th>
                       </tr>
                     </thead>
@@ -409,16 +528,22 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                           <td className="p-6 font-black text-zinc-900">#{os.os_number}</td>
                           <td className="p-6 text-sm font-bold text-zinc-700">{os.driver_name}</td>
                           <td className="p-6 text-sm text-zinc-500 font-medium">{os.origin} → {os.destination}</td>
-                          <td className="p-6 text-sm font-black text-emerald-600">
-                            {os.distance_km ? `${os.distance_km.toFixed(2)} KM` : '-'}
-                          </td>
-                          <td className="p-6 text-sm font-black text-zinc-900">
-                            {os.haulage_cost ? `R$ ${os.haulage_cost.toFixed(2)}` : '-'}
-                          </td>
+                          <td className="p-6 text-xs text-zinc-500 font-bold">{formatDateBR(os.scheduled_date || os.created_at)}</td>
+                          <td className="p-6 text-xs text-zinc-600 font-bold">{formatTime(os.os_start_time)} → {formatTime(os.os_end_time)}</td>
+                          <td className="p-6 text-xs text-zinc-600 font-bold">{formatTime(os.route_start_time)} → {formatTime(os.route_end_time)}</td>
                           <td className="p-6"><Badge status={os.status} /></td>
-                          <td className="p-6 text-xs text-zinc-400 font-bold">{new Date(os.created_at).toLocaleDateString()}</td>
                           <td className="p-6 text-right">
-                            <button onClick={() => navigate(`/os/${os.id}`)} className="text-emerald-600 hover:text-emerald-700 font-black text-xs uppercase tracking-wider">Ver Detalhes</button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => navigate(`/os/${os.id}`)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors" title="Ver detalhes">
+                                <ChevronRight size={18} />
+                              </button>
+                              <button onClick={() => openEditOS(os)} className="p-2 text-zinc-400 hover:text-blue-600 transition-colors" title="Editar">
+                                <Pencil size={18} />
+                              </button>
+                              <button onClick={() => handleDeleteOS(os)} className="p-2 text-zinc-400 hover:text-red-600 transition-colors" title="Excluir">
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -456,7 +581,9 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                         <th className="p-6">KM Percorrido</th>
                         <th className="p-6">Custo da Puxada</th>
                         <th className="p-6">Status</th>
-                        <th className="p-6">Data Finalização</th>
+                        <th className="p-6">Data</th>
+                        <th className="p-6">OS (Início → Fim)</th>
+                        <th className="p-6">Rota (Início → Fim)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
@@ -472,7 +599,9 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
                             {os.haulage_cost ? `R$ ${os.haulage_cost.toFixed(2)}` : 'R$ 0.00'}
                           </td>
                           <td className="p-6"><Badge status={os.status} /></td>
-                          <td className="p-6 text-xs text-zinc-400 font-bold">{new Date(os.created_at).toLocaleDateString()}</td>
+                          <td className="p-6 text-xs text-zinc-400 font-bold">{formatDateBR(os.scheduled_date || os.created_at)}</td>
+                          <td className="p-6 text-xs text-zinc-600 font-bold">{formatTime(os.os_start_time)} → {formatTime(os.os_end_time)}</td>
+                          <td className="p-6 text-xs text-zinc-600 font-bold">{formatTime(os.route_start_time)} → {formatTime(os.route_end_time)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -567,33 +696,21 @@ export const AdminDashboard = ({ user, onLogout }: { user: User, onLogout: () =>
       </AnimatePresence>
 
       <AnimatePresence>
-        {showCreateOS && (
+        {(showCreateOS || editingOSId) && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
               <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
-                <h3 className="text-2xl font-black">Nova Ordem de Serviço</h3>
-                <button onClick={() => setShowCreateOS(false)} className="text-zinc-400 hover:text-zinc-600"><XCircle size={28} /></button>
+                <h3 className="text-2xl font-black">{editingOSId ? 'Editar Ordem de Serviço' : 'Nova Ordem de Serviço'}</h3>
+                <button onClick={closeOSModal} className="text-zinc-400 hover:text-zinc-600"><XCircle size={28} /></button>
               </div>
-              <div className="p-8 space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <Input label="Número da OS" value={newOS.os_number} onChange={(v: string) => setNewOS({...newOS, os_number: v})} placeholder="Ex: 12345" />
-                  <Input label="Placa" value={newOS.plate} onChange={(v: string) => setNewOS({...newOS, plate: v})} placeholder="ABC-1234" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-zinc-700">Motorista Responsável</label>
-                  <select value={newOS.driver_id} onChange={(e) => setNewOS({...newOS, driver_id: e.target.value})} className="w-full bg-white border border-zinc-200 rounded-xl py-3 px-4 focus:ring-2 focus:ring-emerald-500 outline-none">
-                    <option value="">Selecione um motorista</option>
-                    {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <Input label="Origem" value={newOS.origin} onChange={(v: string) => setNewOS({...newOS, origin: v})} />
-                  <Input label="Destino" value={newOS.destination} onChange={(v: string) => setNewOS({...newOS, destination: v})} />
-                </div>
+              <div className="p-8 space-y-6 overflow-y-auto">
+                <OSFormFields form={osForm} setForm={setOsForm} drivers={drivers} />
               </div>
               <div className="p-8 bg-zinc-50 flex gap-4">
-                <Button variant="outline" className="flex-1" onClick={() => setShowCreateOS(false)}>Cancelar</Button>
-                <Button className="flex-1" onClick={handleCreateOS}>Criar e Atribuir</Button>
+                <Button variant="outline" className="flex-1" onClick={closeOSModal}>Cancelar</Button>
+                <Button className="flex-1" onClick={editingOSId ? handleUpdateOS : handleCreateOS}>
+                  {editingOSId ? 'Salvar Alterações' : 'Criar e Atribuir'}
+                </Button>
               </div>
             </motion.div>
           </div>

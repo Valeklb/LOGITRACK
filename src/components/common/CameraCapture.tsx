@@ -1,19 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, MapPin, AlertCircle, Camera } from 'lucide-react';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { Button } from './UI';
+import { getDefaultCoordinates } from '../../utils/coords';
 
 export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onCapture: (data: any) => void, onCancel: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [gps, setGps] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     startCamera();
-    getGPS();
     return () => stream?.getTracks().forEach(t => t.stop());
   }, []);
 
@@ -27,14 +26,6 @@ export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onC
     }
   };
 
-  const getGPS = () => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      (err) => setError('GPS não disponível. Verifique as permissões.'),
-      { enableHighAccuracy: true }
-    );
-  };
-
   const takePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const context = canvasRef.current.getContext('2d');
@@ -46,19 +37,19 @@ export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onC
   };
 
   const handleConfirm = () => {
-    if (!photo || !gps) return;
+    if (!photo) return;
     setLoading(true);
-    const data = {
+    const coords = getDefaultCoordinates();
+    onCapture({
       type,
       photo_data: photo,
-      ...gps,
+      ...coords,
       battery_level: (navigator as any).battery?.level || 0.85,
       network_type: (navigator as any).connection?.effectiveType || '4g',
       device_id: 'WEB_BROWSER_ID',
       local_time: new Date().toISOString(),
       observation: ''
-    };
-    onCapture(data);
+    });
   };
 
   return (
@@ -79,13 +70,6 @@ export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onC
         )}
 
         <div className="absolute bottom-6 left-6 right-6 space-y-4">
-          {gps && (
-            <div className="bg-black/50 backdrop-blur-md text-white p-3 rounded-2xl text-[10px] flex items-center gap-2">
-              <MapPin size={12} className="text-emerald-400" />
-              GPS Ativo: {gps.lat.toFixed(5)}, {gps.lng.toFixed(5)} (±{gps.accuracy.toFixed(1)}m)
-            </div>
-          )}
-          
           {!photo ? (
             <button 
               onClick={takePhoto}
@@ -94,7 +78,7 @@ export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onC
           ) : (
             <div className="flex gap-4">
               <Button variant="secondary" className="flex-1" onClick={() => setPhoto(null)}>Tirar Outra</Button>
-              <Button disabled={loading || !gps} className="flex-1" onClick={handleConfirm}>{loading ? 'Enviando...' : 'Confirmar Registro'}</Button>
+              <Button disabled={loading} className="flex-1" onClick={handleConfirm}>{loading ? 'Enviando...' : 'Confirmar Registro'}</Button>
             </div>
           )}
         </div>
