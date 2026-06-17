@@ -41,12 +41,13 @@ npm start
 
 | Variável | Valor |
 |----------|-------|
-| `RAILWAY_API_URL` | URL do Railway (ex: `https://logitrack-api.up.railway.app`) |
+| `RAILWAY_API_URL` | `https://logitrack-production-f8c4.up.railway.app` (com `https://`) |
 | `VITE_WS_URL` | Mesma URL do Railway (notificações do motorista) |
 
-> O Vercel faz proxy de `/api/*` para o Railway via `api/[...path].ts`. Não é necessário `VITE_API_URL` se usar o proxy.
+> No build, `RAILWAY_API_URL` vira `VITE_API_URL` automaticamente. **Redeploy obrigatório** após salvar variáveis.
 
-4. **Redeploy** após salvar as variáveis.
+4. Confirme que a URL começa com `https://` (sem barra no final).
+5. Faça **Redeploy** no Vercel (Deployments → ⋯ → Redeploy).
 
 ### Banco limpo
 
