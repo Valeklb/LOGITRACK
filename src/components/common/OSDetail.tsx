@@ -385,34 +385,25 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
                 initial={{ opacity: 0, y: 15 }} 
                 animate={{ opacity: 1, y: 0 }} 
                 exit={{ opacity: 0, y: -15 }}
-                className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] text-center space-y-6"
+                className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] text-center space-y-5"
               >
                 <div className="bg-emerald-600 text-white w-14 h-14 rounded-full flex items-center justify-center mx-auto shadow-md">
                   <CheckCircle size={32} />
                 </div>
-                <div>
-                  <h4 className="font-black text-emerald-950 text-xl">Uhuul! Viagem Finalizada!</h4>
-                  <p className="text-emerald-700 text-xs mt-1">A entrega foi registrada com sucesso no sistema da LogiTrack.</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-emerald-200/50">
-                  <div className="bg-white/80 p-4 rounded-2xl border border-emerald-100 text-center">
-                    <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wide">Distância</p>
-                    <p className="font-black text-emerald-600 text-base">{os.distance_km ? `${os.distance_km.toFixed(2)} KM` : '82.5 KM'}</p>
-                  </div>
-                  <div className="bg-white/80 p-4 rounded-2xl border border-emerald-100 text-center">
-                    <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wide">Custo da Viagem</p>
-                    <p className="font-black text-zinc-800 text-base">{os.haulage_cost ? `R$ ${os.haulage_cost.toFixed(2)}` : 'R$ 150.00'}</p>
-                  </div>
+                <div className="space-y-2">
+                  <h4 className="font-black text-emerald-950 text-xl">OS Finalizada</h4>
+                  <p className="text-emerald-800 text-sm leading-relaxed">
+                    Esta ordem de serviço foi concluída com sucesso. Você pode seguir para a próxima demanda ou, se necessário, entrar em contato com o administrador.
+                  </p>
                 </div>
 
                 <Button 
                   id="go_home_success_btn"
                   variant="outline" 
-                  className="w-full scale-95 border-emerald-250 hover:bg-emerald-100/30 text-emerald-800 font-black uppercase text-xs tracking-wider" 
+                  className="w-full border-emerald-200 hover:bg-emerald-100/30 text-emerald-800 font-black uppercase text-xs tracking-wider" 
                   onClick={onBack}
                 >
-                  Voltar para Demandas
+                  Ver Próximas Demandas
                 </Button>
               </motion.div>
             )}
