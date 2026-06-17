@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import { Button } from './UI';
 import { getDefaultCoordinates } from '../../utils/coords';
+import { nowInManausISO } from '../../utils/datetime';
 
 export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onCapture: (data: any) => void, onCancel: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,7 +48,7 @@ export const CameraCapture = ({ type, onCapture, onCancel }: { type: string, onC
       battery_level: (navigator as any).battery?.level || 0.85,
       network_type: (navigator as any).connection?.effectiveType || '4g',
       device_id: 'WEB_BROWSER_ID',
-      local_time: new Date().toISOString(),
+      local_time: nowInManausISO(),
       observation: ''
     });
   };

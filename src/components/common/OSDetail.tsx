@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, LogOut, AlertCircle, MapPin, CheckCircle2, ExternalLink, Users, XCircle, Camera, Clock, Play, CheckCircle, Navigation, Info, HelpCircle, Truck } from 'lucide-react';
+import { ArrowLeft, LogOut, AlertCircle, MapPin, CheckCircle2, ExternalLink, Users, XCircle, Camera, Clock, Play, CheckCircle, Navigation, Info, HelpCircle, Truck, Calendar, Route, User as UserIcon, Hash } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { User, ServiceOrder } from '../../types';
 import { Button, Badge } from './UI';
 import { ChecklistForm } from './ChecklistForm';
-import { mapUrlForCoordinates, mapUrlForDestination } from '../../utils/maps';
+import { mapUrlForDestination } from '../../utils/maps';
 import { apiUrl } from '../../lib/api';
 
 import { getDefaultCoordinates } from '../../utils/coords';
+import { nowInManausISO, formatDateManaus, formatTimeRange, eventDisplayTime } from '../../utils/datetime';
 
 export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { osId: number, user: User, onBack: () => void, onRegisterEvent: (type: 'COLETA' | 'ENTREGA', eventData?: any) => void, onLogout: () => void }) => {
   const [os, setOs] = useState<ServiceOrder | null>(null);
@@ -73,7 +74,7 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
         battery_level: 0.9,
         network_type: '4g',
         device_id: 'MOBILE_DEVICE',
-        local_time: new Date().toISOString(),
+        local_time: nowInManausISO(),
         observation: `Cheia ou Vazia: ${estadoCarreta}`,
         actor_id: user.id,
         plate: trailerPlate // also updates plate in server
@@ -118,7 +119,7 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
         battery_level: 0.85,
         network_type: '4g',
         device_id: 'MOBILE_DEVICE',
-        local_time: new Date().toISOString(),
+        local_time: nowInManausISO(),
         observation: 'Entregue no destino final.',
         actor_id: user.id
       };
@@ -481,88 +482,174 @@ export const OSDetail = ({ osId, user, onBack, onRegisterEvent, onLogout }: { os
 
         {activeTab === 'info' ? (
           <>
-            <section className="bg-white p-5 rounded-3xl shadow-sm border border-zinc-100 space-y-4">
+            {/* Resumo */}
+            <section className="bg-gradient-to-br from-emerald-600 to-emerald-800 p-6 rounded-[2rem] text-white shadow-lg shadow-emerald-200/50 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100/80">Ordem de Serviço</p>
+                  <h3 className="text-3xl font-black tracking-tight">#{os.os_number}</h3>
+                </div>
+                <Badge status={os.status} />
+              </div>
+              <div className="flex flex-wrap gap-4 pt-2 border-t border-white/20">
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-50">
+                  <Calendar size={16} />
+                  {formatDateManaus(os.scheduled_date || os.created_at)}
+                </div>
+                {os.reassignment_count > 0 && (
+                  <span className="text-[10px] font-black uppercase tracking-widest bg-white/20 px-2 py-1 rounded-lg">
+                    Reatribuída {os.reassignment_count}x
+                  </span>
+                )}
+              </div>
+            </section>
+
+            {/* Cronograma */}
+            <section className="bg-white p-6 rounded-[2rem] border border-zinc-100 shadow-sm space-y-4">
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Clock size={14} className="text-emerald-600" /> Cronograma (Horário de Manaus)
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-zinc-50 rounded-2xl p-4 space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">OS — Início → Fim</p>
+                  <p className="text-lg font-black text-zinc-900">{formatTimeRange(os.os_start_time, os.os_end_time)}</p>
+                </div>
+                <div className="bg-zinc-50 rounded-2xl p-4 space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Rota — Início → Fim</p>
+                  <p className="text-lg font-black text-zinc-900">{formatTimeRange(os.route_start_time, os.route_end_time)}</p>
+                </div>
+              </div>
+            </section>
+
+            {/* Informações */}
+            <section className="bg-white p-6 rounded-[2rem] border border-zinc-100 shadow-sm space-y-5">
               <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Informações Gerais</h3>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase">Placa</p>
-                  <p className="font-bold">{os.plate}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase">Motorista</p>
-                  <p className="font-bold">{os.driver_name}</p>
-                </div>
-              </div>
-              <div className="pt-2">
-                <p className="text-[10px] text-zinc-400 font-bold uppercase">Rota</p>
-                <p className="font-medium text-sm">{os.origin} → {os.destination}</p>
-              </div>
-              {os.distance_km !== undefined && os.distance_km !== null && (
-                <div className="pt-4 border-t border-zinc-50 mt-2 flex justify-between items-end">
+                <div className="flex items-start gap-3 bg-zinc-50 rounded-2xl p-4">
+                  <div className="p-2 bg-white rounded-xl text-emerald-600"><Hash size={18} /></div>
                   <div>
-                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Distância Percorrida</p>
-                    <p className="font-black text-emerald-600 text-lg">{os.distance_km.toFixed(2)} KM</p>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Placa</p>
+                    <p className="font-black text-zinc-900">{os.plate || '—'}</p>
                   </div>
-                  {os.haulage_cost !== undefined && os.haulage_cost !== null && (
-                    <div className="text-right">
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase">Custo da Puxada</p>
-                      <p className="font-black text-zinc-900 text-lg">R$ {os.haulage_cost.toFixed(2)}</p>
-                    </div>
-                  )}
+                </div>
+                <div className="flex items-start gap-3 bg-zinc-50 rounded-2xl p-4">
+                  <div className="p-2 bg-white rounded-xl text-indigo-600"><UserIcon size={18} /></div>
+                  <div>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Motorista</p>
+                    <p className="font-black text-zinc-900">{os.driver_name || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative pl-8 space-y-5 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-emerald-100">
+                <div className="relative">
+                  <div className="absolute -left-8 top-0.5 w-6 h-6 rounded-full bg-indigo-100 border-2 border-indigo-500 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                  </div>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase">Origem</p>
+                  <p className="font-bold text-zinc-900">{os.origin}</p>
+                </div>
+                <div className="relative">
+                  <div className="absolute -left-8 top-0.5 w-6 h-6 rounded-full bg-emerald-100 border-2 border-emerald-500 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  </div>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase">Destino</p>
+                  <p className="font-bold text-zinc-900">{os.destination}</p>
+                </div>
+              </div>
+
+              {(os.distance_km != null || os.haulage_cost != null) && (
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
+                  <div className="text-center p-4 bg-emerald-50 rounded-2xl">
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Distância</p>
+                    <p className="font-black text-emerald-700 text-xl">{os.distance_km != null ? `${os.distance_km.toFixed(2)} km` : '—'}</p>
+                  </div>
+                  <div className="text-center p-4 bg-zinc-50 rounded-2xl">
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Custo da Puxada</p>
+                    <p className="font-black text-zinc-900 text-xl">{os.haulage_cost != null ? `R$ ${os.haulage_cost.toFixed(2)}` : '—'}</p>
+                  </div>
+                </div>
+              )}
+
+              {os.admin_note && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                  <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Observação Admin</p>
+                  <p className="text-sm text-amber-900">{os.admin_note}</p>
                 </div>
               )}
             </section>
 
+            {/* Registros de campo */}
             <section className="space-y-4">
-              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Registros de Campo</h3>
-              <div className="space-y-4 relative before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-0.5 before:bg-zinc-200">
-                {os.events?.map((event, idx) => (
-                  <div key={idx} className="relative pl-12">
-                    <div className={`absolute left-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-zinc-50 ${event.type === 'COLETA' ? 'bg-blue-500' : 'bg-emerald-500'} text-white`}>
-                      {event.type === 'COLETA' ? <Clock size={16} /> : <CheckCircle2 size={16} />}
-                    </div>
-                    <div className="bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-sm uppercase tracking-widest">{event.type}</span>
-                        <span className="text-[10px] text-zinc-400 font-bold">{new Date(event.server_time).toLocaleString()}</span>
-                      </div>
-                      
-                      {event.photo_data ? (
-                        <img src={event.photo_data} className="w-full h-40 object-cover rounded-xl" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="bg-zinc-50 text-zinc-500 p-4 rounded-xl text-xs font-bold border border-zinc-200 flex items-center gap-2">
-                          <Info size={16} className="text-zinc-400" />
-                          <span>Viagem Iniciada/Finalizada sem foto registrada. Observação: {event.observation || 'Sem observações.'}</span>
-                        </div>
-                      )}
+              <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                <Route size={14} className="text-emerald-600" /> Registros de Campo
+              </h3>
 
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold">
-                          <MapPin size={10} /> {event.lat.toFixed(5)}, {event.lng.toFixed(5)}
+              {!os.events?.length ? (
+                <div className="bg-white border border-dashed border-zinc-200 rounded-[2rem] p-10 text-center">
+                  <Clock size={32} className="mx-auto text-zinc-300 mb-3" />
+                  <p className="text-sm font-bold text-zinc-500">Nenhum registro ainda</p>
+                  <p className="text-xs text-zinc-400 mt-1">Coleta e entrega aparecerão aqui.</p>
+                </div>
+              ) : (
+                <div className="space-y-4 relative before:absolute before:left-[23px] before:top-3 before:bottom-3 before:w-0.5 before:bg-zinc-200">
+                  {os.events.map((event, idx) => (
+                    <div key={idx} className="relative pl-14">
+                      <div className={`absolute left-0 top-1 w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${event.type === 'COLETA' ? 'bg-blue-500' : 'bg-emerald-500'} text-white`}>
+                        {event.type === 'COLETA' ? <Play size={20} /> : <CheckCircle2 size={20} />}
+                      </div>
+                      <div className="bg-white p-5 rounded-[1.5rem] border border-zinc-100 shadow-sm space-y-3">
+                        <div className="flex flex-wrap justify-between items-start gap-2">
+                          <div>
+                            <span className={`text-xs font-black uppercase tracking-widest ${event.type === 'COLETA' ? 'text-blue-600' : 'text-emerald-600'}`}>
+                              {event.type === 'COLETA' ? 'Coleta / Início' : 'Entrega / Fim'}
+                            </span>
+                            <p className="text-[10px] text-zinc-400 font-bold mt-0.5">Fuso: Manaus (AMT, UTC−4)</p>
+                          </div>
+                          <span className="text-xs font-black text-zinc-700 bg-zinc-100 px-3 py-1.5 rounded-xl">
+                            {eventDisplayTime(event.local_time, event.server_time)}
+                          </span>
                         </div>
-                        <a href={mapUrlForCoordinates(event.lat, event.lng)} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-600 font-black uppercase tracking-widest flex items-center gap-1">
-                          Ver Mapa <ExternalLink size={10} />
-                        </a>
+
+                        {event.photo_data ? (
+                          <img src={event.photo_data} alt={`Registro ${event.type}`} className="w-full h-44 object-cover rounded-xl" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="bg-zinc-50 text-zinc-600 p-4 rounded-xl text-sm border border-zinc-100 flex items-start gap-2">
+                            <Info size={18} className="text-zinc-400 shrink-0 mt-0.5" />
+                            <span>{event.observation || 'Registro realizado sem foto.'}</span>
+                          </div>
+                        )}
+
+                        {event.type === 'COLETA' && os.origin && (
+                          <a href={mapUrlForDestination(os.origin)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-black uppercase tracking-wider hover:underline">
+                            Ver origem no mapa <ExternalLink size={12} />
+                          </a>
+                        )}
+                        {event.type === 'ENTREGA' && os.destination && (
+                          <a href={mapUrlForDestination(os.destination)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-black uppercase tracking-wider hover:underline">
+                            Ver destino no mapa <ExternalLink size={12} />
+                          </a>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
           </>
         ) : (
           <section className="space-y-4">
             <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Trilha de Auditoria</h3>
-            <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-[2rem] border border-zinc-100 shadow-sm overflow-hidden">
               <div className="divide-y divide-zinc-50">
                 {os.audit?.map((log, idx) => (
-                  <div key={idx} className="p-4 space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-zinc-900 uppercase tracking-widest">{log.action.replace('_', ' ')}</span>
-                      <span className="text-[10px] text-zinc-400 font-bold">{new Date(log.created_at).toLocaleString()}</span>
+                  <div key={idx} className="p-5 space-y-1.5">
+                    <div className="flex justify-between items-center gap-3">
+                      <span className="text-xs font-black text-zinc-900 uppercase tracking-widest">{log.action.replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-zinc-500 font-bold whitespace-nowrap">{eventDisplayTime(undefined, log.created_at)}</span>
                     </div>
                     <p className="text-xs text-zinc-500 font-medium">Por: {log.actor_name}</p>
-                    <p className="text-[10px] text-zinc-400 font-mono truncate bg-zinc-50 p-1 rounded mt-1">{log.details}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono truncate bg-zinc-50 p-2 rounded-lg mt-1">{log.details}</p>
                   </div>
                 ))}
               </div>
