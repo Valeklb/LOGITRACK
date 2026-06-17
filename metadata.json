@@ -1,0 +1,8 @@
+{
+  "name": "LogiTrack",
+  "description": "Sistema de gestão logística com painéis web para admin, gestor e motorista.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
