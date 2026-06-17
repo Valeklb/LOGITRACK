@@ -37,14 +37,16 @@ npm start
 
 1. Importe o repositório em [vercel.com](https://vercel.com).
 2. Framework: **Vite** | Build: `npm run build` | Output: `dist`
-3. Adicione a variável de ambiente:
+3. Adicione as variáveis de ambiente:
 
 | Variável | Valor |
 |----------|-------|
-| `VITE_API_URL` | URL do Railway (sem `/` no final) |
-| `VITE_WS_URL` | Mesma URL do Railway (para notificações do motorista) |
+| `RAILWAY_API_URL` | URL do Railway (ex: `https://logitrack-api.up.railway.app`) |
+| `VITE_WS_URL` | Mesma URL do Railway (notificações do motorista) |
 
-4. Deploy. A URL da Vercel é a que os usuários acessam.
+> O Vercel faz proxy de `/api/*` para o Railway via `api/[...path].ts`. Não é necessário `VITE_API_URL` se usar o proxy.
+
+4. **Redeploy** após salvar as variáveis.
 
 ### Banco limpo
 
