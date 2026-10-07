@@ -93,7 +93,6 @@ export interface OSEvent {
 export interface AuditLog {
   id: number;
   os_id?: number | null;
-  actor_id: number;
   actor_name?: string;
   actor_role?: string;
   action: string;

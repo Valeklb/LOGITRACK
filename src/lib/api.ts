@@ -89,9 +89,10 @@ export interface ApiOptions {
 export async function api<T = any>(path: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, timeoutMs = 15000, skipAuthHandler = false } = options;
 
+  const tokenUsed = authToken;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (tokenUsed) headers.Authorization = `Bearer ${tokenUsed}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -134,7 +135,8 @@ export async function api<T = any>(path: string, options: ApiOptions = {}): Prom
     data && typeof data.error === 'string' && data.error.trim() ? data.error : defaultMessage(res.status);
   const error = new ApiError(res.status, message, code, data);
 
-  if (!skipAuthHandler) {
+  // Só avisa se a resposta é da sessão atual (ignora respostas atrasadas de uma sessão anterior).
+  if (!skipAuthHandler && tokenUsed && tokenUsed === authToken) {
     const cleanPath = path.split('?')[0];
     if (res.status === 401 && cleanPath !== '/api/login') {
       emitAuthEvent('unauthorized');
