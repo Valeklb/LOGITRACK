@@ -21,3 +21,17 @@ body {
   background: #e4e4e7;
   border-radius: 10px;
 }
+
+/* Área segura do iPhone (barra inferior / entalhe) */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+/* Evita o "pulo" de zoom do iOS ao tocar nos campos e o destaque azul no toque */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}

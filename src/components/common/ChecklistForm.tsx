@@ -1,140 +1,213 @@
 import React, { useState } from 'react';
-import { Camera, XCircle } from 'lucide-react';
-import { Button } from './UI';
-import { CameraCapture } from './CameraCapture';
-import { syncQueue } from '../driver/DriverHome';
-import { apiUrl } from '../../lib/api';
+import { AlertTriangle, CheckCircle2, Loader2, Truck } from 'lucide-react';
+import { Button, ErrorBanner, Input, Textarea } from './UI';
 
-export const ChecklistForm = ({ type, osId, driverId, plate, onComplete, onCancel }: { type: 'VEHICLE' | 'CONTAINER', osId?: number, driverId: number, plate: string, onComplete: () => void, onCancel?: () => void }) => {
-  const vehicleItems: { id: string, label: string, requiredPhoto?: boolean }[] = [
-    { id: 'pneus', label: 'Pneus em bom estado?' },
-    { id: 'luzes', label: 'Luzes e sinalização funcionando?' },
-    { id: 'oleo', label: 'Nível de óleo e água ok?' },
-    { id: 'freios', label: 'Freios testados e funcionando?' },
-    { id: 'limpeza', label: 'Cabine limpa?' },
-  ];
+export type VehicleItemKey = 'pneus' | 'luzes' | 'oleo' | 'freios' | 'limpeza';
 
-  const containerItems: { id: string, label: string, requiredPhoto?: boolean }[] = [
-    { id: 'lacre', label: 'Lacre sem rompimento', requiredPhoto: true },
-  ];
+/** `false` = problema (permitido; fica registrado para o administrador). */
+export type VehicleChecklistItems = Record<VehicleItemKey, boolean> & { observacao?: string };
 
-  const items = type === 'VEHICLE' ? vehicleItems : containerItems;
-  const [values, setValues] = useState<Record<string, boolean>>(
-    items.reduce((acc, item) => ({ ...acc, [item.id]: false }), {})
-  );
-  const [photos, setPhotos] = useState<Record<string, string>>({});
-  const [showCamera, setShowCamera] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+export interface ChecklistFormData {
+  vehicle_plate: string;
+  items: VehicleChecklistItems;
+}
 
-  const handleSubmit = async () => {
-    const allChecked = Object.values(values).every(v => v);
-    if (!allChecked) {
-      alert('Todos os itens devem ser marcados como OK.');
-      return;
-    }
+interface ChecklistFormProps {
+  onSubmit: (data: ChecklistFormData) => void | Promise<void>;
+  submitting?: boolean;
+  submitLabel?: string;
+  initialPlate?: string;
+  /** Mostra o botão "Cancelar" ao lado do envio. */
+  onCancel?: () => void;
+  /** Erro vindo de quem enviou (ex.: sem conexão), mostrado junto ao botão. */
+  error?: string | null;
+}
 
-    for (const item of items) {
-      if (item.requiredPhoto && !photos[item.id]) {
-        alert(`A foto para o item "${item.label}" é obrigatória.`);
-        return;
-      }
-    }
+const ITEMS: { key: VehicleItemKey; question: string; short: string }[] = [
+  { key: 'pneus', question: 'Pneus em bom estado?', short: 'Pneus' },
+  { key: 'luzes', question: 'Luzes e sinalização funcionando?', short: 'Luzes' },
+  { key: 'oleo', question: 'Nível de óleo e água ok?', short: 'Óleo e água' },
+  { key: 'freios', question: 'Freios funcionando?', short: 'Freios' },
+  { key: 'limpeza', question: 'Cabine limpa?', short: 'Limpeza' },
+];
 
-    setLoading(true);
-    const data = {
-      driver_id: driverId,
-      vehicle_plate: plate,
-      type,
-      os_id: osId,
-      items: values,
-      photos: photos
-    };
+const NOTE_MAX_LENGTH = 1000;
 
-    if (navigator.onLine) {
-      try {
-        const res = await fetch(apiUrl('/api/checklists'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        if (res.ok) onComplete();
-        else alert('Erro ao salvar checklist');
-      } catch (e) {
-        syncQueue.add({ syncType: 'CHECKLIST', data });
-        onComplete();
-      }
-    } else {
-      syncQueue.add({ syncType: 'CHECKLIST', data });
-      onComplete();
-    }
-    setLoading(false);
+/** Placa só com letras e números, em maiúsculas ('abc-1d23' → 'ABC1D23'). */
+export function normalizePlate(value: string | null | undefined): string {
+  return (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+type Answers = Record<VehicleItemKey, boolean | null>;
+
+const EMPTY_ANSWERS: Answers = { pneus: null, luzes: null, oleo: null, freios: null, limpeza: null };
+
+export const ChecklistForm = ({
+  onSubmit,
+  submitting = false,
+  submitLabel = 'Confirmar',
+  initialPlate = '',
+  onCancel,
+  error,
+}: ChecklistFormProps) => {
+  const [plate, setPlate] = useState(() => (initialPlate ?? '').toUpperCase());
+  const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const plateValue = normalizePlate(plate);
+  const missing = ITEMS.filter((item) => answers[item.key] === null);
+  const answeredCount = ITEMS.length - missing.length;
+  const hasProblem = ITEMS.some((item) => answers[item.key] === false);
+
+  const answer = (key: VehicleItemKey, value: boolean) => {
+    setAnswers((prev) => ({ ...prev, [key]: value }));
+    setLocalError(null);
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setTried(true);
+
+    if (!plateValue) {
+      setLocalError('Informe a placa do cavalo.');
+      return;
+    }
+    if (missing.length > 0) {
+      setLocalError(`Marque OK ou Problema em: ${missing.map((item) => item.short).join(', ')}.`);
+      return;
+    }
+    setLocalError(null);
+
+    const items: VehicleChecklistItems = {
+      pneus: answers.pneus === true,
+      luzes: answers.luzes === true,
+      oleo: answers.oleo === true,
+      freios: answers.freios === true,
+      limpeza: answers.limpeza === true,
+    };
+    const observacao = note.trim();
+    if (hasProblem && observacao) items.observacao = observacao;
+
+    void onSubmit({ vehicle_plate: plateValue, items });
+  };
+
+  const shownError = localError ?? error ?? null;
+
   return (
-    <div className="flex flex-col h-full bg-white">
-      <header className="p-6 border-b border-zinc-100 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">Checklist {type === 'VEHICLE' ? 'do Veículo' : 'do Container'}</h2>
-          <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest">Placa: {plate}</p>
+    <form noValidate onSubmit={handleSubmit} className="flex-1 flex flex-col">
+      <div className="flex-1 p-4 space-y-4">
+        <div className="bg-white p-4 rounded-2xl border border-zinc-100 shadow-sm">
+          <Input
+            label="Placa do cavalo (veículo)"
+            value={plate}
+            onChange={(value) => {
+              setPlate(value.toUpperCase());
+              setLocalError(null);
+            }}
+            placeholder="Ex.: ABC1D23"
+            icon={Truck}
+            maxLength={8}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+            required
+            disabled={submitting}
+            error={tried && !plateValue ? 'Informe a placa do cavalo.' : null}
+          />
         </div>
-        {onCancel && <button onClick={onCancel} className="p-2 text-zinc-400"><XCircle /></button>}
-      </header>
-      <div className="p-6 flex-1 overflow-y-auto space-y-4">
-        {items.map(item => (
-          <div key={item.id} className="space-y-2">
-            <label className="flex items-center gap-4 p-4 bg-zinc-50 rounded-2xl cursor-pointer active:bg-zinc-100 transition-colors">
-              <input 
-                type="checkbox" 
-                checked={values[item.id]} 
-                onChange={(e) => setValues({ ...values, [item.id]: e.target.checked })}
-                className="w-6 h-6 rounded-lg border-zinc-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="font-medium text-zinc-700">{item.label}</span>
-            </label>
-            
-            {item.requiredPhoto && (
-              <div className="px-4">
-                {photos[item.id] ? (
-                  <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-zinc-100 border border-zinc-200">
-                    <img src={photos[item.id]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    <button 
-                      onClick={() => setShowCamera(item.id)}
-                      className="absolute bottom-2 right-2 bg-white/90 backdrop-blur p-2 rounded-lg text-xs font-bold shadow-sm"
-                    >
-                      Trocar Foto
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setShowCamera(item.id)}
-                    className="w-full py-3 border-2 border-dashed border-zinc-200 rounded-xl flex items-center justify-center gap-2 text-zinc-500 hover:border-emerald-300 hover:text-emerald-600 transition-colors"
-                  >
-                    <Camera size={20} />
-                    <span className="text-sm font-bold">Capturar Foto Obrigatória</span>
-                  </button>
-                )}
+
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest">Checklist do veículo</h3>
+          <span className="text-xs font-semibold text-zinc-500">
+            {answeredCount} de {ITEMS.length} respondidos
+          </span>
+        </div>
+
+        {ITEMS.map((item) => {
+          const value = answers[item.key];
+          const unanswered = tried && value === null;
+          return (
+            <div
+              key={item.key}
+              className={`bg-white p-4 rounded-2xl border shadow-sm space-y-3 ${
+                unanswered ? 'border-red-300' : 'border-zinc-100'
+              }`}
+            >
+              <p className="font-semibold text-zinc-800">{item.question}</p>
+              <div className="grid grid-cols-2 gap-3" role="group" aria-label={item.question}>
+                <button
+                  type="button"
+                  aria-pressed={value === true}
+                  disabled={submitting}
+                  onClick={() => answer(item.key, true)}
+                  className={`min-h-14 rounded-xl border font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60 ${
+                    value === true
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-100'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                  }`}
+                >
+                  <CheckCircle2 size={20} /> OK
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={value === false}
+                  disabled={submitting}
+                  onClick={() => answer(item.key, false)}
+                  className={`min-h-14 rounded-xl border font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60 ${
+                    value === false
+                      ? 'bg-red-600 border-red-600 text-white shadow-md shadow-red-100'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                  }`}
+                >
+                  <AlertTriangle size={20} /> Problema
+                </button>
               </div>
-            )}
+              {unanswered && <p className="text-xs text-red-600">Escolha OK ou Problema.</p>}
+            </div>
+          );
+        })}
+
+        {hasProblem && (
+          <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-3">
+            <p className="text-sm text-amber-800 flex items-start gap-2">
+              <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+              <span>Os itens com problema ficam registrados para o administrador. Você pode continuar mesmo assim.</span>
+            </p>
+            <Textarea
+              label="Observação (opcional)"
+              value={note}
+              onChange={setNote}
+              placeholder="Conte o que está com problema"
+              maxLength={NOTE_MAX_LENGTH}
+              disabled={submitting}
+            />
           </div>
-        ))}
+        )}
       </div>
 
-      {showCamera && (
-        <CameraCapture 
-          type={`CHECKLIST_${showCamera.toUpperCase()}`}
-          onCapture={(data) => {
-            setPhotos({ ...photos, [showCamera]: data.photo_data });
-            setValues({ ...values, [showCamera]: true });
-            setShowCamera(null);
-          }}
-          onCancel={() => setShowCamera(null)}
-        />
-      )}
-      <div className="p-6 border-t border-zinc-100">
-        <Button disabled={loading} onClick={handleSubmit} className="w-full py-4">
-          {loading ? 'Salvando...' : 'Finalizar Checklist'}
-        </Button>
+      <div className="sticky bottom-0 z-10 bg-white border-t border-zinc-100 px-4 pt-3 pb-safe space-y-3">
+        {shownError && <ErrorBanner message={shownError} />}
+        <div className="flex gap-3">
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={submitting} className="min-h-14 px-5">
+              Cancelar
+            </Button>
+          )}
+          <Button type="submit" disabled={submitting} className="flex-1 min-h-14 text-base font-bold">
+            {submitting ? (
+              <>
+                <Loader2 size={20} className="animate-spin" /> Enviando…
+              </>
+            ) : (
+              submitLabel
+            )}
+          </Button>
+        </div>
       </div>
-    </div>
+    </form>
   );
 };

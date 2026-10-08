@@ -1,24 +1,18 @@
-export const DEFAULT_COORDS = { lat: -23.55052, lng: -46.6333, accuracy: 0 };
+import { formatDateManaus, formatTimeManaus } from './datetime';
 
-export function getDefaultCoordinates() {
-  return { ...DEFAULT_COORDS };
-}
-
-export function extractTimeFromIso(iso?: string): string | null {
+/** 'HH:MM' de um ISO ('2026-10-07T08:30:00') ou de um horário ('08:30'). */
+export function extractTimeFromIso(iso?: string | null): string | null {
   if (!iso) return null;
-  const time = iso.includes('T') ? iso.split('T')[1] : iso;
-  return time?.substring(0, 5) ?? null;
+  const time = iso.includes('T') ? iso.split('T')[1] : iso.includes(' ') ? iso.split(' ')[1] : iso;
+  return time?.substring(0, 5) || null;
 }
 
-export function formatDateBR(value?: string): string {
-  if (!value) return '—';
-  const datePart = value.includes('T') ? value.split('T')[0] : value;
-  const [y, m, d] = datePart.split('-');
-  if (!y || !m || !d) return value;
-  return `${d}/${m}/${y}`;
+/** 'dd/mm/aaaa' — aceita 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM:SS' (UTC) e ISO. */
+export function formatDateBR(value?: string | null): string {
+  return formatDateManaus(value);
 }
 
-export function formatTime(value?: string): string {
-  if (!value) return '—';
-  return value.substring(0, 5);
+/** 'HH:MM' — aceita horário ('08:30:00') ou data/hora completa. */
+export function formatTime(value?: string | null): string {
+  return formatTimeManaus(value);
 }

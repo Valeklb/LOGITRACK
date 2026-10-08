@@ -1,7 +1,16 @@
 import fs from 'fs';
 
-const apiBase = (process.env.VITE_API_URL || process.env.RAILWAY_API_URL || '').replace(/\/$/, '');
-const wsBase = (process.env.VITE_WS_URL || apiBase).replace(/\/$/, '');
+const apiBase = (process.env.VITE_API_URL || process.env.RAILWAY_API_URL || '').trim().replace(/\/$/, '');
+const wsBase = (process.env.VITE_WS_URL || apiBase).trim().replace(/\/$/, '');
+
+if (process.env.VERCEL === '1' && !apiBase.startsWith('https://')) {
+  console.error(
+    '[vercel] Build cancelado: defina RAILWAY_API_URL (ou VITE_API_URL) nas variáveis da Vercel ' +
+      'com o endereço público da API no Railway, começando com https:// (ex.: https://sua-api.up.railway.app). ' +
+      'Depois salve e faça Redeploy.'
+  );
+  process.exit(1);
+}
 
 if (apiBase) {
   const lines = [`VITE_API_URL=${apiBase}`];

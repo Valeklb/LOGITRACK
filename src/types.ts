@@ -1,23 +1,20 @@
+export type UserRole = 'driver' | 'admin' | 'gestor';
+
+export type OSStatus = 'ABERTA' | 'EM_COLETA' | 'EM_ROTA' | 'FECHADA' | 'CANCELADA';
+
+export type ReassignmentStatus = 'PENDENTE' | 'APROVADO' | 'REPROVADO' | 'CANCELADO';
+
 export interface User {
   id: number;
   email: string;
   name: string;
-  cpf?: string;
-  role: 'driver' | 'admin' | 'gestor';
-  is_active?: boolean;
-  shift_status?: 'OFF_SHIFT' | 'ON_SHIFT';
-  assignedRoute?: Route;
-}
-
-export interface Route {
-  id: number;
-  name: string;
-  start_lat: number;
-  start_lng: number;
-  assigned_driver_id?: number;
-  driver_name?: string;
-  status: 'AVAILABLE' | 'ASSIGNED' | 'COMPLETED';
-  created_at: string;
+  cpf?: string | null;
+  role: UserRole;
+  is_active: boolean;
+  shift_status: 'OFF_SHIFT' | 'ON_SHIFT';
+  current_plate?: string | null;
+  shift_started_at?: string | null;
+  must_change_password: boolean;
 }
 
 export interface ServiceOrder {
@@ -25,27 +22,34 @@ export interface ServiceOrder {
   os_number: string;
   driver_id: number;
   driver_name?: string;
-  motorista_original_id?: number;
-  plate: string;
+  motorista_original_id?: number | null;
+  /** Placa da carreta (informada pelo motorista ao iniciar a OS ou pelo admin). */
+  plate?: string | null;
+  /** Placa do cavalo (placa do turno do motorista ao iniciar a OS). */
+  truck_plate?: string | null;
   origin: string;
   destination: string;
-  status: 'ABERTA' | 'EM_COLETA' | 'EM_ROTA' | 'FECHADA' | 'CANCELADA';
-  admin_note?: string;
+  status: OSStatus;
+  admin_note?: string | null;
   created_at: string;
-  scheduled_date?: string;
-  os_start_time?: string;
-  os_end_time?: string;
-  route_start_time?: string;
-  route_end_time?: string;
-  last_reassigned_at?: string;
+  scheduled_date?: string | null;
+  /** Previsto (definido pelo admin) — 'HH:MM'. */
+  os_start_time?: string | null;
+  os_end_time?: string | null;
+  /** Realizado (gravado pelo motorista; o admin pode ajustar). */
+  route_start_time?: string | null;
+  route_end_time?: string | null;
+  last_reassigned_at?: string | null;
   reassignment_count: number;
-  has_pickup: boolean;
-  has_delivery: boolean;
-  distance_km?: number;
-  haulage_cost?: number;
+  has_pickup: boolean | number;
+  has_delivery: boolean | number;
+  distance_km: number | null;
+  haulage_cost: number | null;
   events?: OSEvent[];
   audit?: AuditLog[];
-  pending_request?: ReassignmentRequest;
+  checklists?: Checklist[];
+  pending_request?: ReassignmentRequest | null;
+  last_decision?: ReassignmentRequest | null;
 }
 
 export interface ReassignmentRequest {
@@ -60,34 +64,35 @@ export interface ReassignmentRequest {
   new_driver_id: number;
   new_driver_name?: string;
   reason: string;
-  status: 'PENDENTE' | 'APROVADO' | 'REPROVADO' | 'CANCELADO';
-  manager_user_id?: number;
-  manager_name?: string;
-  decision_note?: string;
+  status: ReassignmentStatus;
+  manager_user_id?: number | null;
+  manager_name?: string | null;
+  decision_note?: string | null;
   created_at: string;
-  decided_at?: string;
+  decided_at?: string | null;
 }
 
 export interface OSEvent {
   id: number;
   os_id: number;
   type: 'COLETA' | 'ENTREGA';
-  photo_data: string;
-  lat: number;
-  lng: number;
-  accuracy: number;
-  battery_level: number;
-  network_type: string;
-  device_id: string;
-  local_time: string;
+  local_time?: string | null;
   server_time: string;
-  observation?: string;
+  observation?: string | null;
+  plate?: string | null;
+  trailer_state?: 'CHEIA' | 'VAZIA' | null;
+  photo_data?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  battery_level?: number | null;
+  network_type?: string | null;
+  device_id?: string | null;
 }
 
 export interface AuditLog {
   id: number;
-  os_id?: number;
-  actor_id: number;
+  os_id?: number | null;
   actor_name?: string;
   actor_role?: string;
   action: string;
@@ -101,9 +106,19 @@ export interface Checklist {
   driver_name?: string;
   vehicle_plate: string;
   type: 'VEHICLE' | 'CONTAINER';
-  os_id?: number;
+  os_id?: number | null;
+  os_number?: string | null;
   items: Record<string, boolean | string>;
   created_at: string;
+}
+
+export interface DashboardDay {
+  /** 'YYYY-MM-DD' (Manaus) */
+  date: string;
+  /** Dia da semana curto, ex.: 'Seg' */
+  label: string;
+  os: number;
+  cost: number;
 }
 
 export interface DashboardStats {
@@ -112,6 +127,23 @@ export interface DashboardStats {
   em_rota: number;
   fechada: number;
   cancelada: number;
+  total_haulage_cost: number;
+  total_distance_km: number;
   pending_approvals: number;
-  total_haulage_cost?: number;
+  drivers_on_shift: number;
+  completion_rate: number | null;
+  by_day: DashboardDay[];
 }
+
+/** Mensagens recebidas pelo WebSocket. */
+export interface WsMessage {
+  type: 'NEW_OS' | 'DATA_CHANGED' | 'SESSION_REVOKED' | string;
+  os_id?: number | null;
+  title?: string;
+  message?: string;
+}
+
+/** Corpo de um evento de OS enviado pelo motorista (também usado na fila offline). */
+export type OSEventPayload =
+  | { type: 'COLETA'; local_time: string; plate: string; trailer_state: 'CHEIA' | 'VAZIA' }
+  | { type: 'ENTREGA'; local_time: string; observation?: string };
