@@ -34,6 +34,8 @@ O que tem em cada tela do caminho administrativo:
 
 ## Papéis: quem pode fazer o quê
 
+O **Master** é um administrador especial: pode tudo que o admin **e** o gestor podem (inclusive cancelar OS e aprovar realocações), e ninguém mais consegue editar, desativar ou resetar a senha dele. Veja [Usuário Master](#usuário-master).
+
 | Ação | Admin | Gestor | Motorista |
 |---|:---:|:---:|:---:|
 | Ver painel, ordens, histórico, checklists e equipe | ✅ | ✅ | — |
@@ -67,6 +69,23 @@ Regras importantes:
 4. Depois disso, qualquer pessoa pode trocar a senha em **Alterar senha**.
 
 Esqueceu a senha? Peça ao admin ou ao gestor para **Resetar senha** na tela Equipe. Quando a senha é resetada, a pessoa é desconectada de todos os aparelhos.
+
+---
+
+## Usuário Master
+
+O Master é criado pelas variáveis do Railway — a senha nunca precisa passar por chat ou e-mail.
+
+1. No Railway, crie `MASTER_NAME`, `MASTER_EMAIL` e `MASTER_PASSWORD` (mínimo 6 caracteres; use uma senha forte).
+2. O Railway reinicia o servidor sozinho. A conta Master é criada (ou, se o e-mail já existir, essa conta vira Master).
+3. Entre com esse e-mail e senha. Não há troca obrigatória no primeiro acesso, porque a senha foi escolhida por você.
+
+Como funciona:
+
+- Existe **um só Master**: o e-mail que está em `MASTER_EMAIL`. Trocou o e-mail na variável? O selo passa para a nova conta.
+- Na tela Equipe ele aparece com o selo **Master**, e ninguém mais tem botões de ação no cartão dele.
+- **Esqueceu a senha do Master?** Troque `MASTER_PASSWORD` no Railway. Ao reiniciar, a senha é redefinida e o Master é desconectado dos aparelhos.
+- Se você **não** mexer na variável, reiniciar o servidor **não** desfaz uma troca de senha feita pelo app (Alterar senha).
 
 ---
 
@@ -119,6 +138,7 @@ O arquivo [`.env.example`](.env.example) tem todas as variáveis com exemplos. *
 | `ADMIN_PASSWORD` | recomendada | Senha provisória do primeiro admin. |
 | `GESTOR_NAME`, `GESTOR_EMAIL`, `GESTOR_TEMP_PASSWORD` | não | Criam um gestor ao iniciar, se ainda não existir usuário com esse e-mail. |
 | `MOTORISTA_NAME`, `MOTORISTA_EMAIL`, `MOTORISTA_TEMP_PASSWORD` | não | Criam um motorista ao iniciar, se ainda não existir usuário com esse e-mail. |
+| `MASTER_NAME`, `MASTER_EMAIL`, `MASTER_PASSWORD` | não | Criam/atualizam a conta **Master** a cada início. Veja [Usuário Master](#usuário-master). |
 | `PORT` | não | O Railway define sozinho. |
 
 - `ADMIN_EMAIL` e `ADMIN_PASSWORD` **só valem quando o banco está vazio**. Se o admin já existe, elas não mudam nada.

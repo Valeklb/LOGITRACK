@@ -21,6 +21,7 @@ interface PublicUser {
   role: Role;
   is_active: boolean;
   must_change_password: boolean;
+  is_master: boolean;
   current_plate: string | null;
   shift_started_at: string | null;
   shift_status: "ON_SHIFT" | "OFF_SHIFT";
@@ -324,6 +325,8 @@ try { db.prepare("ALTER TABLE users ADD COLUMN shift_status TEXT DEFAULT 'OFF_SH
 try { db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0").run(); } catch {}
 try { db.prepare("ALTER TABLE users ADD COLUMN current_plate TEXT").run(); } catch {}
 try { db.prepare("ALTER TABLE users ADD COLUMN shift_started_at TEXT").run(); } catch {}
+try { db.prepare("ALTER TABLE users ADD COLUMN is_master INTEGER NOT NULL DEFAULT 0").run(); } catch {}
+db.exec("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)");
 try { db.prepare("ALTER TABLE os_events ADD COLUMN plate TEXT").run(); } catch {}
 try { db.prepare("ALTER TABLE os_events ADD COLUMN trailer_state TEXT").run(); } catch {}
 
@@ -410,9 +413,70 @@ function createSeedUser(name: string, email: string, password: string, role: Rol
   ).run(name, email, hashPassword(password), role);
 }
 
+/** Dados do Master vindos das variáveis de ambiente (ou null se incompletos). */
+function masterFromEnv(): { name: string; email: string; password: string } | null {
+  const name = process.env.MASTER_NAME?.trim();
+  const email = process.env.MASTER_EMAIL?.trim().toLowerCase();
+  const password = process.env.MASTER_PASSWORD;
+  if (!name && !email && !password) return null;
+  if (!name || !email || !password) {
+    console.warn("[master] Defina MASTER_NAME, MASTER_EMAIL e MASTER_PASSWORD juntas — conta Master não configurada.");
+    return null;
+  }
+  if (password.length < MIN_PASSWORD) {
+    console.warn(`[master] MASTER_PASSWORD precisa ter pelo menos ${MIN_PASSWORD} caracteres — conta Master não configurada.`);
+    return null;
+  }
+  return { name, email, password };
+}
+
+/**
+ * Cria ou atualiza a conta Master a partir de MASTER_NAME / MASTER_EMAIL / MASTER_PASSWORD.
+ * Só existe um Master. A senha da variável só é aplicada quando ela muda (guardamos um hash
+ * da última senha aplicada), então reiniciar não desfaz uma troca de senha feita pelo app.
+ */
+function bootstrapMaster() {
+  const master = masterFromEnv();
+  if (!master) return;
+  const getSetting = (key: string) =>
+    (db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as Row | undefined)?.value as string | undefined;
+  const setSetting = (key: string, value: string) =>
+    db.prepare("INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+
+  db.transaction(() => {
+    let row = db.prepare("SELECT * FROM users WHERE lower(email) = ? ORDER BY id LIMIT 1").get(master.email) as Row | undefined;
+    const appliedHash = getSetting("master_password_hash");
+    const passwordChanged = !appliedHash || !verifyPassword(master.password, appliedHash);
+
+    if (!row) {
+      db.prepare(
+        "INSERT INTO users (name, email, password, role, is_active, must_change_password, is_master, shift_status) VALUES (?, ?, ?, 'admin', 1, 0, 1, 'OFF_SHIFT')"
+      ).run(master.name, master.email, hashPassword(master.password));
+      row = db.prepare("SELECT * FROM users WHERE lower(email) = ?").get(master.email) as Row;
+      console.log(`[master] Conta Master criada: ${master.email}`);
+    } else {
+      db.prepare(
+        "UPDATE users SET name = ?, role = 'admin', is_active = 1, is_master = 1, shift_started_at = NULL, current_plate = NULL, shift_status = 'OFF_SHIFT' WHERE id = ?"
+      ).run(master.name, row.id);
+      if (passwordChanged) {
+        db.prepare("UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(master.password), row.id);
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").run(row.id);
+        console.log(`[master] Senha do Master redefinida pela variável MASTER_PASSWORD: ${master.email}`);
+      }
+      if (!row.is_master) console.log(`[master] Conta ${master.email} promovida a Master.`);
+    }
+
+    const demoted = db.prepare("UPDATE users SET is_master = 0 WHERE is_master = 1 AND id != ?").run(row.id).changes;
+    if (demoted) console.log(`[master] ${demoted} conta(s) deixaram de ser Master (só existe um, o de MASTER_EMAIL).`);
+    if (passwordChanged) setSetting("master_password_hash", hashPassword(master.password));
+  })();
+}
+
 function seedUsers() {
   const count = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as Row).n;
-  if (count === 0) {
+  if (count === 0 && masterFromEnv()) {
+    console.log("[seed] Banco vazio com MASTER_* definido: a conta Master será a primeira administradora.");
+  } else if (count === 0) {
     const email = (process.env.ADMIN_EMAIL || "admin@logitrack.com").trim().toLowerCase();
     const password = process.env.ADMIN_PASSWORD || "admin123";
     if (password.length < MIN_PASSWORD) console.warn(`[seed] ADMIN_PASSWORD tem menos de ${MIN_PASSWORD} caracteres.`);
@@ -440,6 +504,7 @@ function seedUsers() {
 }
 
 seedUsers();
+bootstrapMaster();
 
 // ---------------------------------------------------------------------------
 // Validação de entrada
@@ -579,6 +644,7 @@ function publicUser(row: Row): PublicUser {
     role: row.role,
     is_active: !!row.is_active,
     must_change_password: !!row.must_change_password,
+    is_master: !!row.is_master,
     current_plate: row.current_plate ?? null,
     shift_started_at: row.shift_started_at ?? null,
     shift_status: row.shift_started_at ? "ON_SHIFT" : "OFF_SHIFT",
@@ -894,12 +960,22 @@ function recordLoginFailure(key: string) {
   else entry.count++;
 }
 
+/** O Master é um admin que também tem todos os poderes do gestor. */
+function actsAsGestor(user: PublicUser): boolean {
+  return user.role === "gestor" || user.is_master;
+}
+
 function requireRole(...roles: Role[]): RequestHandler {
   return (req, _res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) fail(403, "Você não tem permissão para fazer isso.");
+    const user = req.user;
+    const allowed =
+      !!user && (roles.includes(user.role) || (user.is_master && (roles.includes("admin") || roles.includes("gestor"))));
+    if (!allowed) fail(403, "Você não tem permissão para fazer isso.");
     next();
   };
 }
+
+const MASTER_ONLY_MESSAGE = "A conta Master só pode ser alterada pelo próprio Master.";
 
 const PASSWORD_CHANGE_ALLOWED = new Set(["GET /api/me", "POST /api/me/password", "POST /api/logout"]);
 
@@ -1052,6 +1128,7 @@ async function startServer() {
     const target = getUserOr404(req.params.id);
     const isSelf = target.id === actor.id;
     if (actor.role === "gestor" && target.role !== "driver") fail(403, "O gestor só pode alterar motoristas.");
+    if (target.is_master && !isSelf) fail(403, MASTER_ONLY_MESSAGE);
     const b = getBody(req);
     const changes: Row = {};
 
@@ -1064,6 +1141,7 @@ async function startServer() {
       const email = normalizeEmail(b.email);
       if (!email || !isValidEmail(email)) fail(400, "E-mail inválido.");
       if (email !== String(target.email ?? "").trim().toLowerCase()) {
+        if (target.is_master) fail(400, "O e-mail do Master é definido pela variável MASTER_EMAIL no Railway.");
         ensureUniqueEmail(email, target.id);
         changes.email = email;
       }
@@ -1140,6 +1218,7 @@ async function startServer() {
     const target = getUserOr404(req.params.id);
     if (target.id === actor.id) fail(400, 'Para trocar a sua própria senha, use "Alterar senha".');
     if (actor.role === "gestor" && target.role !== "driver") fail(403, "O gestor só pode resetar a senha de motoristas.");
+    if (target.is_master) fail(403, MASTER_ONLY_MESSAGE);
     const temp = checkNewPassword(getBody(req).temp_password, "A senha provisória");
 
     db.transaction(() => {
@@ -1398,7 +1477,7 @@ async function startServer() {
     let cancel = false;
     if (b.status !== undefined && b.status !== os.status) {
       if (b.status !== "CANCELADA") fail(400, "Status inválido.");
-      if (actor.role !== "gestor") fail(403, "Só o gestor pode cancelar uma OS.");
+      if (!actsAsGestor(actor)) fail(403, "Só o gestor pode cancelar uma OS.");
       if (os.status === "FECHADA") fail(409, "Esta OS já foi finalizada e não pode ser cancelada.");
       cancel = true;
     }
@@ -1409,7 +1488,7 @@ async function startServer() {
     if (b.driver_id !== undefined && b.driver_id !== null && b.driver_id !== "" && Number(b.driver_id) !== oldDriverId) {
       if (cancel) fail(400, "Cancele a OS sem trocar o motorista.");
       if (isClosed) fail(409, "Não é possível trocar o motorista de uma OS finalizada ou cancelada.");
-      if (actor.role === "admin" && (os.status !== "ABERTA" || hasPendingRequest(os.id))) {
+      if (!actsAsGestor(actor) && (os.status !== "ABERTA" || hasPendingRequest(os.id))) {
         fail(409, 'Esta OS já começou ou tem um pedido pendente. Use "Realocar".');
       }
       newDriver = getActiveDriver(toId(b.driver_id));
@@ -1581,7 +1660,7 @@ async function startServer() {
     if (!reason) fail(400, "Informe o motivo da realocação.");
     const details = { from: oldDriverId, from_name: os.driver_name ?? null, to: newDriver.id, to_name: newDriver.name, reason };
 
-    if (actor.role === "admin") {
+    if (!actsAsGestor(actor)) {
       if (hasPendingRequest(os.id)) fail(409, "Já existe um pedido de realocação pendente para esta OS.");
       const requestId = db.transaction(() => {
         const info = db

@@ -5,7 +5,7 @@ import type { User, UserRole } from '../../../types';
 import { api, errorMessage } from '../../../lib/api';
 import { emitDataChanged } from '../../../lib/events';
 import { Button, EmptyState, ErrorBanner } from '../../common/UI';
-import { roleLabel } from '../../../utils/labels';
+import { roleLabel, userRoleLabel } from '../../../utils/labels';
 import { formatDateTimeManaus, formatTimeManaus, isTodayInManaus } from '../../../utils/datetime';
 import {
   FilterChips,
@@ -87,10 +87,11 @@ export const TeamView = ({ core, user }: { core: LiveData<AdminCoreData>; user: 
   const filtered = team.filter(
     (u) =>
       (roleFilter === 'TODOS' || u.role === roleFilter) &&
-      matchesSearch(search, [u.name, u.email, u.cpf, u.current_plate, roleLabel(u.role)]),
+      matchesSearch(search, [u.name, u.email, u.cpf, u.current_plate, roleLabel(u.role), userRoleLabel(u)]),
   );
 
-  const canManage = (target: User) => target.id !== user.id && (isAdmin || target.role === 'driver');
+  // A conta Master só é alterada pelo próprio Master (pela variável no servidor).
+  const canManage = (target: User) => target.id !== user.id && !target.is_master && (isAdmin || target.role === 'driver');
 
   const runAction = async (target: User, action: () => Promise<string>) => {
     if (busyId) return;
@@ -214,8 +215,12 @@ export const TeamView = ({ core, user }: { core: LiveData<AdminCoreData>; user: 
                       <div className="flex-1 min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-black text-zinc-900 truncate">{member.name}</p>
-                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wide ${styles.badge}`}>
-                            {roleLabel(member.role)}
+                          <span
+                            className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wide ${
+                              member.is_master ? 'bg-amber-100 text-amber-800' : styles.badge
+                            }`}
+                          >
+                            {userRoleLabel(member)}
                           </span>
                           {isSelf && (
                             <span className="text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wide bg-zinc-900 text-white">

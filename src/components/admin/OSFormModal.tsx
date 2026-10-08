@@ -11,6 +11,7 @@ import {
   todayInManaus,
 } from '../../utils/datetime';
 import type { AdminOS } from './shared';
+import { actsAsGestor } from '../../utils/labels';
 
 interface OSFormValues {
   os_number: string;
@@ -162,7 +163,7 @@ export const OSFormModal = ({ os, drivers, onClose, onSaved }: OSFormModalProps)
   }
 
   const isClosed = os?.status === 'FECHADA' || os?.status === 'CANCELADA';
-  const adminMustReassign = Boolean(os && user?.role === 'admin' && os.status !== 'ABERTA');
+  const adminMustReassign = Boolean(os && !actsAsGestor(user) && os.status !== 'ABERTA');
   const driverLocked = isClosed || adminMustReassign;
   const driverHint = isClosed
     ? 'Não dá para trocar o motorista de uma OS finalizada ou cancelada.'
