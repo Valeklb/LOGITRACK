@@ -17,6 +17,7 @@ import type { DashboardDay, DashboardStats, User } from '../../../types';
 import { Badge, Button, EmptyState } from '../../common/UI';
 import { formatCurrencyBR, formatDateManaus, formatNumberBR, formatTimeManaus, formatTimeRange } from '../../../utils/datetime';
 import { DriverName, LiveStatus, PageHeader, RefreshButton, type AdminCoreData, type AdminOS, type LiveData } from '../shared';
+import { actsAsGestor } from '../../../utils/labels';
 
 const STATUS_COLORS = {
   aberta: '#3b82f6',
@@ -386,7 +387,7 @@ export const PainelView = ({
               tone="amber"
               onClick={() => navigate('/admin/ordens')}
             />
-            {user.role === 'gestor' ? (
+            {actsAsGestor(user) ? (
               <KpiCard
                 label="Aprovações pendentes"
                 value={stats.pending_approvals}

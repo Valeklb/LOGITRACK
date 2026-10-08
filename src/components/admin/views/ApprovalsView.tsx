@@ -6,7 +6,7 @@ import { api, errorMessage } from '../../../lib/api';
 import { emitDataChanged } from '../../../lib/events';
 import { Badge, Button, EmptyState, ErrorBanner, InfoBanner, Textarea } from '../../common/UI';
 import { formatDateTimeManaus } from '../../../utils/datetime';
-import { roleLabel } from '../../../utils/labels';
+import { actsAsGestor, roleLabel } from '../../../utils/labels';
 import { LiveStatus, PageHeader, RefreshButton, SuccessBanner, useLiveData, useNotice } from '../shared';
 
 type PendingRequest = ReassignmentRequest & {
@@ -18,7 +18,7 @@ type PendingRequest = ReassignmentRequest & {
 type Decision = 'APROVADO' | 'REPROVADO';
 
 export const ApprovalsView = ({ user }: { user: User }) => {
-  const canDecide = user.role === 'gestor';
+  const canDecide = actsAsGestor(user);
   const live = useLiveData(() => api<PendingRequest[]>('/api/reassign/pending'));
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});

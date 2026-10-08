@@ -7,7 +7,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { emitDataChanged } from '../../lib/events';
 import { Logo } from '../common/UI';
-import { roleLabel } from '../../utils/labels';
+import { userRoleLabel } from '../../utils/labels';
 import { OSFormModal } from './OSFormModal';
 import { SuccessBanner, useLiveData, useNotice, type AdminCoreData, type AdminOS } from './shared';
 import { PainelView } from './views/PainelView';
@@ -114,7 +114,7 @@ export const AdminDashboard = () => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate">{user.name}</p>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{roleLabel(user.role)}</p>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{userRoleLabel(user)}</p>
             </div>
           </div>
           <button

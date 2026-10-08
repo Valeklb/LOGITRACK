@@ -15,6 +15,8 @@ export interface User {
   current_plate?: string | null;
   shift_started_at?: string | null;
   must_change_password: boolean;
+  /** Conta Master: admin com todos os poderes do gestor (definida por variável no servidor). */
+  is_master?: boolean;
 }
 
 export interface ServiceOrder {

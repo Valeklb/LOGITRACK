@@ -26,6 +26,7 @@ export function normalizeUser(user: User): User {
     is_active: user.is_active === undefined ? true : Boolean(user.is_active),
     shift_status: user.shift_status === 'ON_SHIFT' ? 'ON_SHIFT' : 'OFF_SHIFT',
     must_change_password: Boolean(user.must_change_password),
+    is_master: Boolean(user.is_master),
   };
 }
 

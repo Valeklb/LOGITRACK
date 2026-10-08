@@ -43,3 +43,14 @@ export function roleLabel(role?: string | null): string {
   if (!role) return '—';
   return ROLE_LABELS[role] ?? role;
 }
+
+/** Rótulo do papel de um usuário, mostrando "Master" para a conta Master. */
+export function userRoleLabel(user?: { role?: string | null; is_master?: boolean } | null): string {
+  if (user?.is_master) return 'Master';
+  return roleLabel(user?.role);
+}
+
+/** Gestor ou Master: pode cancelar OS, decidir realocações e trocar motorista a qualquer momento. */
+export function actsAsGestor(user?: { role?: string | null; is_master?: boolean } | null): boolean {
+  return !!user && (user.role === 'gestor' || !!user.is_master);
+}

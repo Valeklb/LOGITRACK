@@ -36,7 +36,7 @@ import {
   formatTimeRange,
 } from '../../utils/datetime';
 import { mapUrlForDestination } from '../../utils/maps';
-import { auditLabel, roleLabel } from '../../utils/labels';
+import { actsAsGestor, auditLabel, roleLabel } from '../../utils/labels';
 import { OSFormModal } from './OSFormModal';
 import { SuccessBanner, useLiveData, useNotice, type AdminOS } from './shared';
 
@@ -467,7 +467,7 @@ const OSDetailScreen = ({ osId }: { osId: number }) => {
   }
 
   const { os, users } = live.data;
-  const isGestor = user?.role === 'gestor';
+  const isGestor = actsAsGestor(user);
   const isClosed = os.status === 'FECHADA' || os.status === 'CANCELADA';
   const canEdit = os.status !== 'CANCELADA';
   const adminBlockedByPending = !isGestor && Boolean(os.pending_request);
